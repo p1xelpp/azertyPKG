@@ -1,0 +1,228 @@
+#!/bin/bash
+
+cmd="$1"
+arg="$2"
+
+if [ -z "$cmd" ]; then
+    echo "usage: vpkg <command> [args]"
+    echo "commands: install, remove, list, info, help"
+    exit 1
+fi
+
+case "$cmd" in
+    install)
+        pkgname="$arg"
+
+        if [ -z "$pkgname" ]; then
+           echo "Usage: vpkg install <package-name>"
+           exit 1
+        fi
+
+        reposfile="$HOME/.vpkg/repos.json"
+
+        if [ ! -f "$reposfile" ]; then
+            echo "Error: repos.json not found."
+            exit 1
+        fi
+
+        # search for package in all repo index files
+	length=$(jq '.repos | length' "$reposfile")
+	found_url=""
+
+        for ((i=0; i<length; i++)); do
+            indexfile=$(jq -r ".repos[$i].local" "$reposfile")
+
+            if [ -f "$indexfile" ]; then
+                # try to find package entry
+                url=$(jq -r ".packages[] | select(.name==\"$pkgname\") | .url" "$indexfile" 2>/dev/null)
+
+                if [ ! -z "$url" ] && [ "$url" != "null" ]; then
+                    found_url="$url"
+                break
+            fi
+        fi
+    	done
+
+        if [ -z "$found_url" ]; then
+            echo "Package '$pkgname' not found in any repository."
+    	    exit 1
+        fi
+
+        echo "Found package at: $found_url"
+	echo "Downloading package..."
+
+	temp="/tmp/$pkgname.vpkg"
+	curl -L -o "$temp" "$found_url"
+
+	echo "Installing package..."
+	vpkg-install "$temp"
+
+	echo "Package installed."
+	;;
+
+    remove)
+        if [ -z "$arg" ]; then
+            echo "usage: vpkg remove <package-name>"
+            exit 1
+        fi
+        echo "removing $arg..."
+        rmbin "$arg" 2>/dev/null
+        # remove executables
+	rm -f "/usr/local/bin/$arg"
+	rm -f "/usr/local/bin/exectest"
+
+        echo "removed $arg (if your system broke, that's on you)"
+        ;;
+
+    list)
+        echo "installed packages:"
+        ls /usr/local/vellum/packages
+        ;;
+
+    info)
+        if [ -z "$arg" ]; then
+            echo "usage: vpkg info <package-name>"
+            exit 1
+        fi
+        cat "/usr/local/vellum/packages/$arg/info.txt"
+        ;;
+     add-repo)
+	 newurl="$arg"
+
+	if [ -z "$newurl"  ]; then
+	    echo "you also need to put in a repo url"
+	    exit 1
+	fi
+
+	# repos.json pad
+	reposfile="$HOME/.vpkg/repos.json"
+
+	# tel hoeveel repos er al zijn
+	count=$(jq '.repos | length' "$reposfile")
+	# nieuwe local index file
+	newlocal="$HOME/.vpkg/index$((count+1)).json"
+	echo "Adding repo:"
+	echo "  URL:   $newurl"
+	echo "  Local: $newlocal"
+	# voeg toe aan repos.json
+	jq ".repos += [{\"url\": \"$newurl\", \"local\": \"$newlocal\"}]" "$reposfile" > "$reposfile.tmp"
+	mv "$reposfile.tmp" "$reposfile"
+	echo "Repo added!"
+	;;
+    update)
+        reposfile="$HOME/.vpkg/repos.json"
+
+	# check if repos.json exists
+	if [ ! -f "$reposfile" ]; then
+	   echo "Error: repos.json not found."
+           exit 1
+	fi
+
+	# count repositories
+ 	length=$(jq '.repos | length' "$reposfile")
+
+	if [ "$length" -eq 0 ]; then
+            echo "No repositories found."
+            exit 1
+        fi
+
+	echo "Updating all repositories..."
+
+	# loop through all repos
+	for ((i=0; i<length; i++)); do
+            url=$(jq -r ".repos[$i].url" "$reposfile")
+            localfile=$(jq -r ".repos[$i].local" "$reposfile")
+
+            echo "  Downloading: $url"
+            curl -L -o "$localfile" "$url"
+        done
+
+	echo "All repositories updated."
+	;;
+
+    config)
+        cfg="$HOME/.vpkg"
+
+        echo "Initializing vpkg config in $cfg..."
+
+        # create directory if missing
+        mkdir -p "$cfg"
+
+        # create repos.json if missing
+        if [ ! -f "$cfg/repos.json" ]; then
+            echo '{"repos":[]}' > "$cfg/repos.json"
+        fi
+
+        echo "vpkg is configured for you now."
+        ;;
+
+
+
+    help)
+        echo "vpkg commands:"
+        echo "  install <name>   install a package (needs root) "
+        echo "  remove <name>         uninstall a package (needs root)"
+        echo "  list                  list installed packages"
+        echo "  info <name>           show package info"
+	    echo "  update		downloads the list of available packages on a repo that is in repos.json"
+        echo "  help                  show this message"
+        echo "  add-repo        adds a repo to repos.json"
+        ;;
+
+    config-to-root)
+        if [ -z "$SUDO_USER" ]; then
+            echo "use sudo on this command and other commands"
+            exit 1
+        fi
+
+        usercfg="/home/$SUDO_USER/.vpkg"
+
+        if [ ! -d "$usercfg" ]; then
+            echo "error: $usercfg does not exist"
+            echo "run vpkg once as normal user to generate config"
+            exit 1
+        fi
+
+        # copy user config to root
+        cp -r "/home/$SUDO_USER/.vpkg" "/root/.vpkg"
+
+
+        echo "configured .vpkg in superuser home folder"
+        ;;
+    clean-everything)
+        if [ -z "$SUDO_USER" ]; then
+            echo "use sudo for this command"
+            exit 1
+        fi
+
+        echo "WARNING: This will remove ALL vpkg data. Including vpkg self and the dependencies"
+        echo "Press Ctrl+C to cancel."
+        sleep 2
+
+        echo "Removing installed packages..."
+        rm -rf /usr/local/vellum/packages/* 2>/dev/null
+
+        echo "Removing executables..."
+        rm -f /usr/local/bin/* 2>/dev/null
+
+        echo "Removing user config..."
+        rm -rf "/home/$SUDO_USER/.vpkg" 2>/dev/null
+
+        echo "Removing root config..."
+        rm -rf /root/.vpkg 2>/dev/null
+
+        echo "Cleaning cache..."
+        rm -f /tmp/*.vpkg 2>/dev/null
+        rm -f /tmp/vpkg-* 2>/dev/null
+        rm -f /tmp/vellum-* 2>/dev/null
+
+        echo "vpkg has been fully reset."
+        ;;
+
+
+
+    *)
+        echo "unknown command '$cmd'"
+        echo "use 'vpkg help' for commands"
+        ;;
+esac

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+    echo "Usage: bin2home <command>"
+    exit 1
+fi
+
+cmd="$1"
+src="/usr/local/bin/$cmd"
+dest="$HOME/bin/$cmd"
+
+# Check if source exists
+if [ ! -f "$src" ]; then
+    echo "Error: $src not found."
+    exit 1
+fi
+
+# Create home bin if missing
+mkdir -p "$HOME/bin"
+
+# Warn if overwriting
+if [ -e "$dest" ]; then
+    echo "Warning: $dest already exists and will be overwritten."
+fi
+
+# MOVE, not copy
+mv "$src" "$dest"
+chmod +x "$dest"
+
+echo "Copied $src → $dest"

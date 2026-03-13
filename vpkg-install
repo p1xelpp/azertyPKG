@@ -1,0 +1,65 @@
+#!/bin/bash
+
+package="$1"
+
+if [ -z "$package" ]; then
+    echo "usage: vpkg-install <package.vpkg>"
+    exit 1
+fi
+
+if [ ! -f "$package" ]; then
+    echo "error: '$package' does not exist"
+    exit 1
+fi
+
+echo "installing $package..."
+
+# temp extract
+tmp="/tmp/vellum-install"
+rm -rf "$tmp"
+mkdir -p "$tmp"
+
+unzip -q "$package" -d "$tmp"
+
+# read name from info.txt (first line)
+if [ ! -f "$tmp/info.txt" ]; then
+    echo "error: package missing info.txt"
+    exit 1
+fi
+
+name=$(head -n 1 "$tmp/info.txt")
+
+# install location
+dest="/usr/local/vellum/packages/$name"
+
+mkdir -p "$dest"
+cp -r "$tmp/"* "$dest/"
+
+echo "installed $name into $dest"
+
+# install executables
+if [ -d "$tmp/exec" ]; then
+    echo "installing executables..."
+    first_exec=""
+
+    for f in "$tmp/exec/"*; do
+        execname=$(basename "$f")
+        cp "$f" /usr/local/bin/
+        echo " → installed $execname"
+
+        # remember first executable for symlink
+        if [ -z "$first_exec" ]; then
+            first_exec="$execname"
+        fi
+    done
+
+    # make symlink with package name
+    if [ -n "$first_exec" ]; then
+        ln -sf "/usr/local/bin/$first_exec" "/usr/local/bin/$name"
+        echo " → created command '$name' (symlink to $first_exec)"
+    fi
+else
+    echo "no exec/ folder, nothing to install into /usr/local/bin"
+fi
+
+echo "done. if it breaks, that's ur fault man."

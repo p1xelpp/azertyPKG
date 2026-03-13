@@ -1,0 +1,39 @@
+#!/bin/bash
+
+
+pkg="$1"
+echo "checking $pkg"
+
+if [ "$pkg" = "." ]; then
+    echo "WHY DO WANNA PUT UR WHOLE HOME FOLDER IN A VELLUM PACKAGE"
+    exit 1
+fi
+
+if [ "$pkg" = "" ]; then
+    echo "usage: vellpkg-build <vellum package>"
+    exit 1
+fi
+
+
+if [ ! -f "$pkg/info.txt" ]; then
+    echo "error ;) :  info.txt file is not in your package"
+    exit 1
+fi
+
+source "$pkg/info.txt"
+
+if [ -z "$mode" ]; then
+    echo "Error ;) : 'mode' does not exist info.txt"
+    exit 1
+fi
+
+if [ ! -d "$pkg/exec" ]; then
+    echo "Error: exec/ map is not in $pkg, please put your bin in there"
+    exit 1
+fi
+
+echo "all okay!!! :D"
+
+echo "beginning to zip $pkg..."
+cd $pkg
+zip -r "../$pkg.vpkg" .
