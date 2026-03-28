@@ -3,7 +3,7 @@
 package="$1"
 
 if [ -z "$package" ]; then
-    echo "usage: vpkg-install <package.vpkg>"
+    echo "usage: azertypkg-install <package.azertypkg>"
     exit 1
 fi
 
