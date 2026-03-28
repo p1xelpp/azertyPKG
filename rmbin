@@ -1,0 +1,16 @@
+#!/bin/bash
+
+package="$1"
+
+if [ -z "$package" ]; then
+    echo "usage: rmbin <vellum package>"
+    exit 1
+fi
+if [ "$package" = "bash" ]; then
+    echo "nice now ur breaking samthin"
+fi
+
+
+rm "/usr/local/bin/$package"
+
+echo "successfully rmbin'ed $package"

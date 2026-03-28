@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+
+# --- macOS-safe realpath ---
+realpath_safe() {
+    # macOS fallback
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1"
+    else
+        cd "$(dirname "$1")" || exit 1
+        echo "$PWD/$(basename "$1")"
+    fi
+}
+
+cmd="$1"
+arg="$2"
+
+if [ -z "$cmd" ]; then
+    echo "usage: azertypkg <command> [args]"
+    echo "commands: install, remove, list, info, help"
+    exit 1
+fi
+
+case "$cmd" in
+    install)
+        pkgname="$arg"
+
+        if [ -z "$pkgname" ]; then
+           echo "Usage: azertypkg install <package-name>"
+           exit 1
+        fi
+
+        reposfile="$HOME/.azertypkg/repos.json"
+
+        if [ ! -f "$reposfile" ]; then
+            echo "Error: repos.json not found."
+            exit 1
+        fi
+
+        # search for package in all repo index files
+        length=$(jq '.repos | length' "$reposfile" 2>/dev/null || echo 0)
+        found_url=""
+
+        for ((i=0; i<length; i++)); do
+            indexfile=$(jq -r ".repos[$i].local" "$reposfile")
+
+            if [ -f "$indexfile" ]; then
+                url=$(jq -r ".packages[] | select(.name==\"$pkgname\") | .url" "$indexfile" 2>/dev/null)
+
+                if [ -n "$url" ] && [ "$url" != "null" ]; then
+                    found_url="$url"
+                    break
+                fi
+            fi
+        done
+
+        if [ -z "$found_url" ]; then
+            echo "Package '$pkgname' not found in any repository."
+            exit 1
+        fi
+
+        echo "Found package at: $found_url"
+        echo "Downloading package..."
+
+        temp="/tmp/$pkgname.azertypkg"
+        curl -L -o "$temp" "$found_url"
+
+        echo "Installing package..."
+        azertypkg-install "$temp"
+
+        echo "Package installed."
+        ;;
+
+    remove)
+        if [ -z "$arg" ]; then
+            echo "usage: azertypkg remove <package-name>"
+            exit 1
+        fi
+        echo "removing $arg..."
+        rmbin "$arg" 2>/dev/null
+
+        rm -f "/usr/local/bin/$arg"
+        rm -f "/usr/local/bin/exectest"
+
+        echo "removed $arg (if your system broke, that's on you)"
+        ;;
+
+    list)
+        echo "installed packages:"
+        ls /usr/local/vellum/packages
+        ;;
+
+    info)
+        if [ -z "$arg" ]; then
+            echo "usage: azertypkg info <package-name>"
+            exit 1
+        fi
+        cat "/usr/local/vellum/packages/$arg/info.txt"
+        ;;
+
+    add-repo)
+        newurl="$arg"
+
+        if [ -z "$newurl" ]; then
+            echo "you also need to put in a repo url"
+            exit 1
+        fi
+
+        reposfile="$HOME/.azertypkg/repos.json"
+
+        if [ ! -f "$reposfile" ]; then
+            echo '{"repos":[]}' > "$reposfile"
+        fi
+
+        count=$(jq '.repos | length' "$reposfile" 2>/dev/null || echo 0)
+        newlocal="$HOME/.azertypkg/index$((count+1)).json"
+
+        echo "Adding repo:"
+        echo "  URL:   $newurl"
+        echo "  Local: $newlocal"
+
+        jq ".repos += [{\"url\": \"$newurl\", \"local\": \"$newlocal\"}]" "$reposfile" > "$reposfile.tmp"
+        mv "$reposfile.tmp" "$reposfile"
+
+        echo "Repo added!"
+        ;;
+
+    update)
+        reposfile="$HOME/.azertypkg/repos.json"
+
+        if [ ! -f "$reposfile" ]; then
+            echo "Error: repos.json not found."
+            exit 1
+        fi
+
+        length=$(jq '.repos | length' "$reposfile" 2>/dev/null || echo 0)
+
+        if [ "${length:-0}" -eq 0 ]; then
+            echo "No repositories found."
+            exit 1
+        fi
+
+        echo "Updating all repositories..."
+
+        for ((i=0; i<length; i++)); do
+            url=$(jq -r ".repos[$i].url" "$reposfile")
+            localfile=$(jq -r ".repos[$i].local" "$reposfile")
+
+            echo "  Downloading: $url"
+            curl -L -o "$localfile" "$url"
+        done
+
+        echo "All repositories updated."
+        ;;
+
+    config)
+        cfg="$HOME/.azertypkg"
+
+        echo "Initializing azertypkg config in $cfg..."
+        mkdir -p "$cfg"
+
+        if [ ! -f "$cfg/repos.json" ]; then
+            echo '{"repos":[]}' > "$cfg/repos.json"
+        fi
+
+        echo "azertypkg is configured for you now."
+        ;;
+
+    config-to-root)
+        if [ -z "$SUDO_USER" ]; then
+            echo "use sudo on this command"
+            exit 1
+        fi
+
+        usercfg="$HOME/.azertypkg"
+
+        if [ ! -d "$usercfg" ]; then
+            echo "error: $usercfg does not exist"
+            echo "run azertypkg once as normal user to generate config"
+            exit 1
+        fi
+
+        SRC="$(realpath_safe "$usercfg")"
+        DST="/var/root/.azertypkg"
+
+        mkdir -p "$DST"
+
+        if [ "$(realpath_safe "$SRC")" != "$(realpath_safe "$DST")" ]; then
+            cp -R "$SRC/." "$DST/"
+        fi
+
+        echo "configured .azertypkg in superuser home folder"
+        ;;
+
+    clean-everything)
+        if [ -z "$SUDO_USER" ]; then
+            echo "use sudo for this command"
+            exit 1
+        fi
+
+        echo "WARNING: This will remove ALL azertypkg data. Press Ctrl+C to cancel."
+        sleep 2
+
+        rm -rf /usr/local/vellum/packages/* 2>/dev/null
+        rm -f /usr/local/bin/* 2>/dev/null
+        rm -rf "$HOME/.azertypkg" 2>/dev/null
+        rm -f /tmp/*.azertypkg 2>/dev/null
+
+        echo "azertypkg has been fully reset."
+        ;;
+
+    help)
+        echo "azertypkg commands:"
+        echo "  install <name>"
+        echo "  remove <name>"
+        echo "  list"
+        echo "  info <name>"
+        echo "  update"
+        echo "  add-repo <url>"
+        echo "  config"
+        echo "  config-to-root"
+        echo "  clean-everything"
+        ;;
+
+    *)
+        echo "unknown command '$cmd'"
+        echo "use 'azertypkg help' for commands"
+        ;;
+esac
