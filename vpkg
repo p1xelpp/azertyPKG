@@ -15,7 +15,7 @@ cmd="$1"
 arg="$2"
 
 if [ -z "$cmd" ]; then
-    echo "usage: vpkg <command> [args]"
+    echo "usage: azertypkg <command> [args]"
     echo "commands: install, remove, list, info, help"
     exit 1
 fi
@@ -25,11 +25,11 @@ case "$cmd" in
         pkgname="$arg"
 
         if [ -z "$pkgname" ]; then
-           echo "Usage: vpkg install <package-name>"
+           echo "Usage: azertypkg install <package-name>"
            exit 1
         fi
 
-        reposfile="$HOME/.vpkg/repos.json"
+        reposfile="$HOME/.azertypkg/repos.json"
 
         if [ ! -f "$reposfile" ]; then
             echo "Error: repos.json not found."
@@ -61,18 +61,18 @@ case "$cmd" in
         echo "Found package at: $found_url"
         echo "Downloading package..."
 
-        temp="/tmp/$pkgname.vpkg"
+        temp="/tmp/$pkgname.azertypkg"
         curl -L -o "$temp" "$found_url"
 
         echo "Installing package..."
-        vpkg-install "$temp"
+        azertypkg-install "$temp"
 
         echo "Package installed."
         ;;
 
     remove)
         if [ -z "$arg" ]; then
-            echo "usage: vpkg remove <package-name>"
+            echo "usage: azertypkg remove <package-name>"
             exit 1
         fi
         echo "removing $arg..."
@@ -91,7 +91,7 @@ case "$cmd" in
 
     info)
         if [ -z "$arg" ]; then
-            echo "usage: vpkg info <package-name>"
+            echo "usage: azertypkg info <package-name>"
             exit 1
         fi
         cat "/usr/local/vellum/packages/$arg/info.txt"
@@ -105,14 +105,14 @@ case "$cmd" in
             exit 1
         fi
 
-        reposfile="$HOME/.vpkg/repos.json"
+        reposfile="$HOME/.azertypkg/repos.json"
 
         if [ ! -f "$reposfile" ]; then
             echo '{"repos":[]}' > "$reposfile"
         fi
 
         count=$(jq '.repos | length' "$reposfile" 2>/dev/null || echo 0)
-        newlocal="$HOME/.vpkg/index$((count+1)).json"
+        newlocal="$HOME/.azertypkg/index$((count+1)).json"
 
         echo "Adding repo:"
         echo "  URL:   $newurl"
@@ -125,7 +125,7 @@ case "$cmd" in
         ;;
 
     update)
-        reposfile="$HOME/.vpkg/repos.json"
+        reposfile="$HOME/.azertypkg/repos.json"
 
         if [ ! -f "$reposfile" ]; then
             echo "Error: repos.json not found."
@@ -153,16 +153,16 @@ case "$cmd" in
         ;;
 
     config)
-        cfg="$HOME/.vpkg"
+        cfg="$HOME/.azertypkg"
 
-        echo "Initializing vpkg config in $cfg..."
+        echo "Initializing azertypkg config in $cfg..."
         mkdir -p "$cfg"
 
         if [ ! -f "$cfg/repos.json" ]; then
             echo '{"repos":[]}' > "$cfg/repos.json"
         fi
 
-        echo "vpkg is configured for you now."
+        echo "azertypkg is configured for you now."
         ;;
 
     config-to-root)
@@ -171,16 +171,16 @@ case "$cmd" in
             exit 1
         fi
 
-        usercfg="$HOME/.vpkg"
+        usercfg="$HOME/.azertypkg"
 
         if [ ! -d "$usercfg" ]; then
             echo "error: $usercfg does not exist"
-            echo "run vpkg once as normal user to generate config"
+            echo "run azertypkg once as normal user to generate config"
             exit 1
         fi
 
         SRC="$(realpath_safe "$usercfg")"
-        DST="/var/root/.vpkg"
+        DST="/var/root/.azertypkg"
 
         mkdir -p "$DST"
 
@@ -188,7 +188,7 @@ case "$cmd" in
             cp -R "$SRC/." "$DST/"
         fi
 
-        echo "configured .vpkg in superuser home folder"
+        echo "configured .azertypkg in superuser home folder"
         ;;
 
     clean-everything)
@@ -197,19 +197,19 @@ case "$cmd" in
             exit 1
         fi
 
-        echo "WARNING: This will remove ALL vpkg data. Press Ctrl+C to cancel."
+        echo "WARNING: This will remove ALL azertypkg data. Press Ctrl+C to cancel."
         sleep 2
 
         rm -rf /usr/local/vellum/packages/* 2>/dev/null
         rm -f /usr/local/bin/* 2>/dev/null
-        rm -rf "$HOME/.vpkg" 2>/dev/null
-        rm -f /tmp/*.vpkg 2>/dev/null
+        rm -rf "$HOME/.azertypkg" 2>/dev/null
+        rm -f /tmp/*.azertypkg 2>/dev/null
 
-        echo "vpkg has been fully reset."
+        echo "azertypkg has been fully reset."
         ;;
 
     help)
-        echo "vpkg commands:"
+        echo "azertypkg commands:"
         echo "  install <name>"
         echo "  remove <name>"
         echo "  list"
@@ -223,6 +223,6 @@ case "$cmd" in
 
     *)
         echo "unknown command '$cmd'"
-        echo "use 'vpkg help' for commands"
+        echo "use 'azertypkg help' for commands"
         ;;
 esac
